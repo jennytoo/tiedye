@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Addon Author="Aria@mikros(US)" APIVersion="9" Name="TieDye" Description="Add sort and filter functionality to the costume dye list" Version="0.95">
+    <Script Name="TieDye.lua"/>
+    <Form Name="TieDye.xml"/>
+</Addon>

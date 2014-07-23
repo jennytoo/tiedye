@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Sprites>
+    <Sprite Name="TieDye_Grid" Cycle="1">
+        <Frame Texture="TieDye\tiedye.tga" x0="53" x1="53" x2="53" x3="53" x4="71" x5="71" y0="47" y1="47" y2="47" y3="47" y4="57" y5="57" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
+    </Sprite>
+    <Sprite Name="TieDye_Detail" Cycle="1">
+        <Frame Texture="TieDye\tiedye.tga" x0="78" x1="78" x2="78" x3="78" x4="97" x5="97" y0="47" y1="47" y2="47" y3="47" y4="57" y5="57" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
+    </Sprite>
+    <Sprite Name="TieDye_Marker" Cycle="1">
+        <Frame Texture="TieDye\tiedye.tga" x0="35" x1="42" x2="44" x3="48" x4="50" x5="57" y0="110" y1="110" y2="110" y3="120" y4="132" y5="140" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
+    </Sprite>
+    <Sprite Name="TieDye_Gradient" Cycle="1">
+        <Frame Texture="TieDye\tiedye.tga" x0="53" x1="53" x2="53" x3="53" x4="71" x5="71" y0="62" y1="62" y2="62" y3="62" y4="71" y5="71" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
+    </Sprite>
+</Sprites>
