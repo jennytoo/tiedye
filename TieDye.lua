@@ -12,11 +12,10 @@ require "Window"
 -----------------------------------------------------------------------------------------------
 local TieDye = {}
 
+local carbineCostumes, L
 -----------------------------------------------------------------------------------------------
 -- Constants
 -----------------------------------------------------------------------------------------------
-local carbineCostumes = Apollo.GetAddon("Costumes")
-
 -- dyeRampColors[tDyeInfo.nRampIndex]
 local dyeRampColors = {
     [1] = {["hue"] = 358, ["saturation"] =  49, ["value"] =  94},
@@ -215,7 +214,8 @@ function TieDye:Init()
   local strConfigureButtonText = ""
   local tDependencies = {
     "Costumes",
-    "Gemini:Hook-1.0"
+    "Gemini:Hook-1.0",
+    "Gemini:Locale-1.0"
   }
   Apollo.RegisterAddon(self, bHasConfigureFunction, strConfigureButtonText, tDependencies)
 end
@@ -225,6 +225,8 @@ end
 -----------------------------------------------------------------------------------------------
 function TieDye:OnLoad()
   Apollo.GetPackage("Gemini:Hook-1.0").tPackage:Embed(self)
+  L = Apollo.GetPackage("Gemini:Locale-1.0").tPackage:GetLocale("TieDye", false)
+  carbineCostumes = Apollo.GetAddon("Costumes")
 
   -- load our form file
   self.xmlDoc = XmlDoc.CreateFromFile("TieDye.xml")
@@ -330,6 +332,13 @@ function TieDye:AddHooks()
   -- Clear the original dye list
   self.carbineWndDyeList:DestroyChildren()
 
+  -- Set localized tooltips
+  self.wndControls:FindChild("ListTypeGrid"):SetTooltip(L["VIEW_GRID"])
+  self.wndControls:FindChild("ListTypeLong"):SetTooltip(L["VIEW_LIST"])
+  self.wndControls:FindChild("OrderName"):SetTooltip(L["SORT_NAME"])
+  self.wndControls:FindChild("OrderRamp"):SetTooltip(L["SORT_ID"])
+  self.wndControls:FindChild("KnownOnly"):SetTooltip(L["SHOW_KNOWN_ONLY"])
+
   -- Populate dyes
   carbineCostumes:FillDyes()
 end
@@ -392,7 +401,7 @@ function TieDye:MakeDyeWindow(tDyeInfo, idx)
       wndNewDye:FindChild("DyeName"):SetText(strName)
     end
   elseif self.FilterText == "" and not self.KnownOnly then
-    strName = "Dye not learned"
+    strName = L["LOCKED"]
 
     if self.ShortList then
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "UnknownDyeColor", self.wndDyeList, self)

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Addon Author="Aria@mikros(US)" APIVersion="9" Name="TieDye" Description="Add sort and filter functionality to the costume dye list" Version="0.96">
     <Script Name="GeminiHook/GeminiHook-1.0.lua"/>
+    <Script Name="GeminiLocale/GeminiLocale.lua"/>
+    <Script Name="locale/enUS.lua"/>
+    <Script Name="locale/deDE.lua"/>
+    <Script Name="locale/frFR.lua"/>
     <Script Name="TieDye.lua"/>
     <Form Name="TieDye.xml"/>
 </Addon>
