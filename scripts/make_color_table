@@ -1,0 +1,108 @@
+#!/usr/bin/python -tt
+
+import collections
+import colorsys
+import lua
+import sys
+
+EXCLUDED = ('piss', 'poo', 'poop', 'shit')
+
+class RGB(collections.namedtuple('RGB', 'red green blue')):
+  __slots__ = ()
+  def __new__(_cls, r, g, b):
+    if isinstance(r, int) and isinstance(g, int) and isinstance(b, int):
+      return tuple.__new__(_cls, (r, g, b))
+    else:
+      return tuple.__new__(_cls, (int(r * 255), int(g * 255), int(b * 255)))
+
+
+class HSV(collections.namedtuple('HSV', 'hue saturation value')):
+  __slots__ = ()
+  def __new__(_cls, h, s, v):
+    if isinstance(h, int) and isinstance(s, int) and isinstance(v, int):
+      return tuple.__new__(_cls, (h, s, v))
+    else:
+      return tuple.__new__(_cls, (int(h * 359), int(s * 100), int(v * 100)))
+
+
+def hex_to_rgb(hexcode):
+  return int(hexcode[-6:-4], 16), int(hexcode[-4:-2], 16), int(hexcode[-2:], 16)
+
+
+def rgb_to_hex(rgb):
+  return '#%02X%02X%02x' % rgb
+
+
+def is_rgb_triplet(value):
+  values = value.replace(',', ' ').split()
+  return (3 == len(values)
+      and not filter(lambda x: not x.isdigit(), values)
+      and not filter(lambda x: int(x) < 0 or int(x) > 255, values))
+
+
+def parse_colors(fileobj):
+  colors = {}
+  for fields in (s.strip().split('\t') for s in fileobj):
+    if 2 == len(fields) and fields[1].startswith('#') and 7 == len(fields[1]):
+      # name\t#nnnnnn
+      name = fields[0].lower().replace('gray', 'grey')
+      hexcode = fields[1].upper()
+      rgb = RGB(*hex_to_rgb(hexcode))
+    elif 3 == len(fields) and is_rgb_triplet(fields[0]) and fields[2]:
+      # r g b\t\tname
+      name = fields[2].lower().replace('gray', 'grey')
+      rgb = RGB(*(int(s) for s in fields[0].replace(',', ' ').split()))
+      hexcode = rgb_to_hex(rgb)
+    else:
+      continue
+
+    hsv = HSV(*colorsys.rgb_to_hsv(rgb.red / 255.0, rgb.green / 255.0,
+          rgb.blue / 255.0))
+    color = {
+        'hex': hexcode,
+        'hsv': hsv._asdict(),
+        'rgb': rgb._asdict()
+    }
+    colors[name] = color
+    if 'grey' in name:
+      colors[name.replace('grey', 'gray')] = color
+  return colors
+
+
+def filter_colors(colors):
+  base_colors = [s for s in colors if s.isalpha() and not s.endswith('ish')]
+  adjectives = collections.defaultdict(lambda: 0)
+  for color in colors:
+    parts = color.replace('/', ' ').split()
+    if 1 == len(parts) or parts[-1] not in base_colors:
+      continue
+    del parts[-1]
+    for part in parts:
+      if not part in base_colors and not part.endswith('ish'):
+        adjectives[part] += 1
+  new_colors = {}
+  for color in colors:
+    valid = True
+    for part in color.replace('/', ' ').split():
+      if not (part in base_colors or adjectives.get(part, 0) >= 3):
+        valid = False
+        break
+      if part in EXCLUDED:
+        valid = False
+        break
+    if valid:
+      new_colors[color] = colors[color]
+  return new_colors
+
+
+if '__main__' == __name__:
+  colors = {}
+  if 2 != len(sys.argv):
+    sys.stderr.write('Usage: make_color_table table_name < file\n')
+    sys.exit(1)
+
+  table_name = sys.argv[1]
+
+  colors.update(parse_colors(sys.stdin))
+
+  print table_name, '=', lua.Lua().encode(filter_colors(colors))
