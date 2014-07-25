@@ -211,25 +211,29 @@ end
 -- TieDye Functions
 -----------------------------------------------------------------------------------------------
 function TieDye:FilterDye(tDyeInfo)
+  -- Unknown dye
   if not tDyeInfo then
     return not (self.KnownOnly or self.FilterText ~= "")
   end
 
+  -- No filter
   if self.FilterText == "" then
     return true
   end
 
+  -- Match hue against the hue of an entered color name
   local hue, rampHue
   if TieDyeData.colors[self.FilterText] ~= nil then
     hue = TieDyeData.colors[self.FilterText].hsv.hue
     if TieDyeData.ramps[tDyeInfo.nRampIndex] ~= nil then
       rampHue = TieDyeData.ramps[tDyeInfo.nRampIndex].hue
-      if math.abs(hue - rampHue) < 30 then
+      if math.abs(hue - rampHue) < 30 or math.abs(hue - rampHue) > 329 then
         return true
       end
     end
   end
 
+  -- Match by substring
   return string.find(string.lower(tDyeInfo.strName), self.FilterText, 1, true) ~= nil
 end
 
