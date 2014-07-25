@@ -2,15 +2,32 @@ NAME=TieDye
 VERSION=1.0
 PACKAGE=$(NAME)-$(VERSION).zip
 
-COLORS=$(NAME)/data/colors.lua
+DATA=$(NAME)/data
+COLORS=$(DATA)/colors.lua
+RAMPS=$(DATA)/ramps.lua
 
 default:
-	@echo "clean install package"
+	@echo "  clean data install package"
+	@echo "  $(COLORS) $(RAMPS)"
 
 $(COLORS): data/rgb.txt scripts/make_color_table
-	scripts/make_color_table TieDyeData.colors < data/rgb.txt > $(COLORS)
+	if scripts/make_color_table TieDyeData.colors < data/rgb.txt \
+	  > "$(COLORS).tmp"; then \
+	  rm -f "$(COLORS)" && mv "$(COLORS).tmp" "$(COLORS)"; \
+	else \
+	  rm -f "$(COLORS).tmp"; \
+	fi
 
-$(NAME): $(COLORS)
+$(RAMPS): data/ramps.png scripts/WildStar_DyeRamps
+	if scripts/WildStar_DyeRamps -l "$(RAMPS).tmp" -t TieDyeData.ramps \
+	  -s data/ramps.png; then \
+	  rm -f "$(RAMPS)" && mv "$(RAMPS).tmp" "$(RAMPS)"; \
+	else \
+	  rm "$(RAMPS).tmp"; \
+	fi
+
+data: $(COLORS) $(RAMPS)
+$(NAME): data
 
 install: $(NAME)
 	cp -av -t "$(APPDATA)/NCSOFT/WildStar/Addons" TieDye
@@ -24,4 +41,4 @@ $(PACKAGE): $(NAME)
 	if [ -f "$(PACKAGE)" ]; then rm "$(PACKAGE)"; fi
 	zip -r "$(PACKAGE)" "$(NAME)"
 
-.PHONY: clean default install package $(NAME)
+.PHONY: clean data default install package $(NAME)

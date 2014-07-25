@@ -24,6 +24,7 @@ class HSV(collections.namedtuple('HSV', 'hue saturation value')):
     else:
       return tuple.__new__(_cls, (int(h * 359), int(s * 100), int(v * 100)))
 
+Color = collections.namedtuple('Color', 'hex hsv rgb')
 
 def hex_to_rgb(hexcode):
   return int(hexcode[-6:-4], 16), int(hexcode[-4:-2], 16), int(hexcode[-2:], 16)
@@ -58,11 +59,11 @@ def parse_colors(fileobj):
 
     hsv = HSV(*colorsys.rgb_to_hsv(rgb.red / 255.0, rgb.green / 255.0,
           rgb.blue / 255.0))
-    color = {
-        'hex': hexcode,
-        'hsv': hsv._asdict(),
-        'rgb': rgb._asdict()
-    }
+    color = Color(
+        hex=hexcode,
+        hsv=hsv._asdict(),
+        rgb=rgb._asdict()
+    )._asdict()
     colors[name] = color
     if 'grey' in name:
       colors[name.replace('grey', 'gray')] = color

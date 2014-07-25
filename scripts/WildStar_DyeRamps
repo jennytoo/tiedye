@@ -1,0 +1,658 @@
+#!/usr/bin/python -tt
+
+import collections
+import colorsys
+import json
+import lua
+import math
+import optparse
+import sys
+
+try:
+  import pygame
+except ImportError:
+  sys.stderr.write('Unable to locate pygame. Visualization disabled.\n')
+
+try:
+  from PIL import Image, ImageDraw
+except ImportError:
+  sys.stderr.write('Unable to locate PIL.\n')
+  sys.exit(1)
+
+
+RADIUS = 350
+
+SAMPLE_WIDTH = 25
+SAMPLE_COLUMNS = (
+    75,
+    117,
+    158,
+    200,
+    242,
+    284,
+)
+
+SAMPLE_HEIGHT = 15
+SAMPLE_ROWS = (
+    75,
+    116,
+    157,
+    198,
+    239,
+    280,
+    321,
+    362,
+    403,
+    444,
+    477,
+    519,
+    558,
+    599,
+    640,
+    681,
+    722,
+    763,
+    804,
+    845,
+    886,
+    927,
+    968,
+    1009,
+    1050,
+    1091,
+    1132,
+    1173,
+    1214
+)
+
+class RGB(collections.namedtuple('RGB', 'red green blue')):
+  __slots__ = ()
+  def __new__(_cls, r, g, b):
+    if isinstance(r, int) and isinstance(g, int) and isinstance(b, int):
+      return tuple.__new__(_cls, (r, g, b))
+    else:
+      return tuple.__new__(_cls, (int(r * 255), int(g * 255), int(b * 255)))
+
+
+class HSV(collections.namedtuple('HSV', 'hue saturation value')):
+  __slots__ = ()
+  def __new__(_cls, h, s, v):
+    if isinstance(h, int) and isinstance(s, int) and isinstance(v, int):
+      return tuple.__new__(_cls, (h, s, v))
+    else:
+      return tuple.__new__(_cls, (int(h * 359), int(s * 100), int(v * 100)))
+
+
+Color = collections.namedtuple('Color', 'hex hsv rgb')
+
+
+def rgb_to_hex(rgb):
+  return '#%02X%02X%02x' % rgb
+
+
+class ImageScanner(object):
+  def __init__(self):
+    self.image = None
+    self.colors = {}
+
+  def load(self, filename):
+    self.image = Image.open(filename)
+
+  def load_colors(self, filename):
+    f = open(filename, 'r')
+    colors = json.load(f)
+    f.close()
+
+    for color, data in colors.items():
+      self.colors[int(color)] = data
+
+  def get_color(self, ramp_id):
+    columns = len(SAMPLE_COLUMNS)
+    ramp_x = (ramp_id - 1) % columns
+    ramp_y = (ramp_id - 1) / columns
+
+    x = SAMPLE_COLUMNS[ramp_x]
+    y = SAMPLE_ROWS[ramp_y]
+
+    red = 0
+    green = 0
+    blue = 0
+    for x_offset in xrange(SAMPLE_WIDTH):
+      for y_offset in xrange(SAMPLE_HEIGHT):
+        rgb = self.image.getpixel((x + x_offset, y + y_offset))
+        red += rgb[0]
+        green += rgb[1]
+        blue += rgb[2]
+
+    total_pixels = SAMPLE_WIDTH * SAMPLE_HEIGHT
+    red = int(red / total_pixels)
+    green = int(green / total_pixels)
+    blue = int(blue / total_pixels)
+
+    hsv = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
+    hue = int(hsv[0] * 360)
+    saturation = int(hsv[1] * 100)
+    value = int(hsv[2] * 100)
+
+    yiq = colorsys.rgb_to_yiq(red / 255.0, green / 255.0, blue / 255.0)
+
+    return {
+        'ramp': ramp_id,
+        'red': red,
+        'green': green,
+        'blue': blue,
+        'hue': hue,
+        'saturation': saturation,
+        'value': value,
+        'y': yiq[0],
+        'i': yiq[1],
+        'q': yiq[2]
+    }
+
+  def scan(self):
+    colors = {
+        0: {
+          'ramp': 0,
+          'red': 0,
+          'green': 0,
+          'blue': 0,
+          'hue': 0,
+          'saturation': 0,
+          'value': 0,
+          'y': 0,
+          'i': 0,
+          'q': 0
+        }
+    }
+
+    for color in xrange(1, 170):
+      colors[color] = self.get_color(color)
+    self.colors = colors
+
+  def get_color_table(self):
+    new_colors = {}
+    sorted_colors = sorted(self.colors.items(),
+        key=lambda x: self.color_ramp_key(x[1]))
+    sort_key = 0
+    for index, color in sorted_colors:
+      rgb = RGB(color['red'], color['green'], color['blue'])
+      hsv = HSV(color['hue'], color['saturation'], color['value'])
+      new_colors[index] = Color(hex=rgb_to_hex(rgb),
+          rgb=rgb._asdict(), hsv=hsv._asdict())._asdict()
+      new_colors[index]['order'] = sort_key
+      sort_key += 1
+    return new_colors
+
+  def write_lua(self, filename, table=None):
+    try:
+      f = open(filename, 'w')
+      if table:
+        f.write('%s = ' % table)
+      f.write(lua.Lua().encode(self.get_color_table()))
+      f.close()
+    except Exception as exc:
+      sys.stderr.write('Unable to write %s: %s\n' % (filename, exc))
+      sys.exit(1)
+
+  def write_json(self, filename):
+    try:
+      json.dump(self.get_color_table(), open(filename, 'w'), indent=2)
+    except Exception as exc:
+      sys.stderr.write('Unable to write %s: %s\n' % (filename, exc))
+      sys.exit(1)
+
+  @staticmethod
+  def color_hsv_key(color=None, get_desc=False):
+    if get_desc:
+      return 'Sort on hue, saturation, then value'
+
+    return (
+      color['hue'] / 1,
+      color['saturation'] / 1,
+      color['value'] / 1,
+    )
+
+  @staticmethod
+  def color_shv_key(color=None, get_desc=False):
+    if get_desc:
+      return 'Sort on saturation, hue, then value'
+
+    return (
+      color['saturation'] / 1,
+      color['hue'] / 1,
+      color['value'] / 1,
+    )
+
+  @staticmethod
+  def color_whsv_key(color=None, get_desc=False):
+    if get_desc:
+      return (
+          'Sort on saturation then hue if value < 15 (very dark)'
+          ', value then hue if saturation < 30 (shades of grey)'
+          ', hsv for the remainder')
+
+    key = []
+
+    # Very dark
+    if color['value'] < 15:
+      key.append((
+        360,
+        color['saturation'],
+        color['hue'],
+      ))
+    # Desaturated (greyscale and offgrey)
+    elif color['saturation'] < 30:
+      key.append((
+        361,
+        color['value'],
+        color['hue'],
+      ))
+    # Saturated
+    else:
+      key.append((
+        color['hue'] / 18,
+        color['saturation'] / 10,
+        color['value'] / 10,
+      ))
+    return key
+
+  def color_ramp_key(self, color=None, get_desc=False):
+    if get_desc:
+      return 'Sort using ramp index upto index 155, whsv after'
+    key = [color['ramp'] if color['ramp'] <= 155 else 156]
+    key.append(self.color_whsv_key(color))
+    return key
+
+  @staticmethod
+  def color_yiq_key(color=None, get_desc=False):
+    return (
+      color['q'],
+      color['i'],
+      color['y'],
+    )
+
+  def get_keys(self):
+    keys = {}
+    for member in dir(self):
+      if not (member.startswith('color_') and member.endswith('_key')):
+        continue
+
+      parts = member.split('_')
+      if not (3 == len(parts)):
+        continue
+
+      func = getattr(self, member, None)
+      if not callable(func):
+        continue
+
+      try:
+        keys[parts[1]] = func(get_desc=True)
+      except Exception:
+        pass
+
+    return tuple(keys.items())
+
+  def swatches(self, columns=6, key=None, max_height=200, title=True):
+    key_func = getattr(self, ('color_%s_key' % key).lower(), None)
+    if key and not key_func:
+      sys.stderr.write('Unknown key %s\n' % key)
+      return None
+
+    if key_func:
+      new_colors = sorted(self.colors.values()[1:], key=key_func)
+      colors = {0: self.colors[0]}
+      for i in xrange(len(new_colors)):
+        colors[i + 1] = new_colors[i]
+    else:
+      colors = self.colors
+
+    rows = 169 / columns + int(169 % columns > 0)
+    grid = int(max_height / ((rows * 3) + 1))
+    width = columns * (grid * 3) + grid
+    height = rows * (grid * 3) + grid
+    new_image = Image.new('RGBA', (width, height), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(new_image)
+
+
+    for ramp_id in xrange(1, 170):
+      ramp_x = (ramp_id - 1) % columns
+      ramp_y = (ramp_id - 1) / columns
+
+      x = grid + ramp_x * (grid * 3)
+      y = grid + ramp_y * (grid * 3)
+
+      rgb = (
+          colors[ramp_id]['red'],
+          colors[ramp_id]['green'],
+          colors[ramp_id]['blue'],
+          255
+      )
+      for x_offset in xrange(2 * grid):
+        for y_offset in xrange(2 * grid):
+          new_image.putpixel((x + x_offset, y + y_offset), rgb)
+
+    return new_image
+
+  @staticmethod
+  def calc_xy(degrees, length):
+    return (
+      int(length * math.cos(math.radians(degrees))),
+      int(length * math.sin(math.radians(degrees)))
+    )
+
+  @staticmethod
+  def calc_xyz(lat, lon, length):
+    lat1 = math.radians(lat)
+    lon1 = math.radians(lon)
+    x = int(length * math.cos(lat1) * math.sin(lon1))
+    y = int(length * math.sin(lat1) * math.sin(lon1))
+    z = int(length * math.cos(lon1))
+    return (x, y, z)
+
+  @staticmethod
+  def calc_latlon(x, y, z, radius=None):
+    if radius is None:
+      radius = math.sqrt(x*x + y*y + z*z)
+    lat_radians = math.acos(z/radius)
+    lon_radians = math.atan2(y, x)
+    lat = int(math.degrees(lat_radians) + 0.5)
+    lon = int(math.degrees(lon_radians) + 0.5)
+    return lat, lon
+
+  @staticmethod
+  def project(x, y, z, camera_plane=500):
+    scale = float(camera_plane) / y
+    return int(x * scale + 0.5), camera_plane, int(z * scale + 0.5)
+
+  def globe(self, rotate_lat=0, rotate_lon=0, camera_plane=1000, distance=1000):
+    colors = []
+
+    width = RADIUS * 2
+    height = RADIUS * 2
+    new_image = Image.new('RGB', (width, height), (0, 0, 0))
+    draw = ImageDraw.Draw(new_image)
+    for ramp_index in xrange(1, 170):
+      saturation = self.colors[ramp_index]['saturation']
+      value = self.colors[ramp_index]['value']
+      length = (RADIUS - 1) * saturation / 100
+
+      # latitude
+      degrees_lat = (self.colors[ramp_index]['hue'] + rotate_lat) % 360
+      # longitude
+      degrees_lon = (value * 180 / 100 + rotate_lon) % 360
+
+      color = (
+          self.colors[ramp_index]['red'],
+          self.colors[ramp_index]['green'],
+          self.colors[ramp_index]['blue'])
+      outline = (
+          colorsys.hsv_to_rgb(
+            self.colors[ramp_index]['hue'] * 0.0028,
+            self.colors[ramp_index]['saturation'] * 0.01,
+            self.colors[ramp_index]['value'] * 0.008,
+          )
+      )
+      outline = (
+          int(outline[0] * 256),
+          int(outline[1] * 256),
+          int(outline[2] * 256)
+      )
+
+      corner_data = collections.namedtuple('corner', 'x y z')
+      outer_face = []
+      inner_face = []
+      polygons = []
+      for l1, l2 in ((-4, -5), (-4, 5), (5, 5), (5, -4)):
+        for corners, l3 in ((inner_face, 0.98), (outer_face, 1.02)):
+          lon = (degrees_lon + (l1/2.0) % 360)
+          lat = (degrees_lat + (l2/2.0) % 360)
+          px, py, pz = self.calc_xyz(lat, lon, int(length * l3 + 0.5))
+          px2, _, pz2 = self.project(px, py + distance, pz,
+              camera_plane=camera_plane)
+          corners.append(corner_data(px2 + RADIUS, py, pz2 + RADIUS))
+      o1, o2, o3, o4 = outer_face
+      oy = reduce(lambda x, y: x + y.y, outer_face, 0) / 4
+      i1, i2, i3, i4 = inner_face
+      iy = reduce(lambda x, y: x + y.y, inner_face, 0) / 4
+      face1 = (o1, o2, i2, i1)
+      f1y = reduce(lambda x, y: x + y.y, face1, 0) / 4
+      face2 = (o2, o3, i3, i2)
+      f2y = reduce(lambda x, y: x + y.y, face2, 0) / 4
+      face3 = (o3, o4, i4, i3)
+      f3y = reduce(lambda x, y: x + y.y, face3, 0) / 4
+      face4 = (o4, o1, i1, i4)
+      f4y = reduce(lambda x, y: x + y.y, face4, 0) / 4
+      colors.append((oy, [(c.x, c.z) for c in outer_face], color, outline))
+      colors.append((iy, [(c.x, c.z) for c in inner_face], color, outline))
+      colors.append((f1y, [(c.x, c.z) for c in face1], color, outline))
+      colors.append((f2y, [(c.x, c.z) for c in face2], color, outline))
+      colors.append((f3y, [(c.x, c.z) for c in face3], color, outline))
+      colors.append((f4y, [(c.x, c.z) for c in face4], color, outline))
+
+    for _, corners, color, outline in reversed(sorted(colors)):
+      draw.polygon(corners, fill=color, outline=outline)
+
+    return new_image
+
+
+class Main(object):
+  def __init__(self):
+    self.scanner = ImageScanner()
+    self.globe_images = []
+    self.swatches = []
+
+  @staticmethod
+  def handle_event(event):
+    if event.type == pygame.QUIT:
+      sys.exit(0)
+    elif event.type == 3 and event.key in (pygame.K_ESCAPE, 113):
+      sys.exit(0)
+
+  def do_swatches(self, save=False, colorspaces=None):
+    font = pygame.font.SysFont('georgia', 25, bold=True)
+
+    groups = [None] + (colorspaces if colorspaces else [])
+    rows = math.ceil(math.sqrt(len(groups)))
+    max_height = ((2 * RADIUS) - ((rows + 1) * 20)) / rows - 45
+    for key in groups:
+      swatches = self.scanner.swatches(columns=15, key=key, max_height=max_height)
+      if not swatches:
+        continue
+
+      swatch_surface = pygame.image.frombuffer(swatches.tobytes(), swatches.size, 'RGBA')
+      width, height = swatch_surface.get_size()
+      height += 45
+
+      surface = pygame.Surface((width, height), flags=pygame.SRCALPHA)
+      surface.blit(swatch_surface, (0, 45))
+
+      text_surface = font.render(key or 'Default', True, (255, 255, 255))
+      text_width, _ = text_surface.get_size()
+      text_x_offset = (width - text_width) / 2
+      surface.blit(text_surface, (text_x_offset, 0))
+
+      if save:
+        swatches.save('WildStar_tDyeInfo_nId_new_%s.png' % key, 'PNG')
+
+      self.swatches.append(surface)
+
+  def do_globe(self):
+    size = RADIUS * 2
+
+    images = []
+    sys.stdout.write('Please wait. Rendering images.\n')
+    first = 0
+    last = 360
+    step = 1
+    total = (last - first) / step
+    for rotation in xrange(first, last, step):
+      i = self.scanner.globe(rotate_lat=rotation)
+      images.append(
+          pygame.image.frombuffer(i.tobytes(), (size, size), 'RGB'))
+      if not (len(images) % 9):
+        sys.stderr.write('\r%3d%% ' % (len(images) * 100 / total))
+        sys.stderr.write('.' * (len(images) * 70 / total))
+        sys.stderr.flush()
+    sys.stderr.write('\n')
+
+    self.globe_images = images
+
+  def do_draw(self):
+    swatch_width, swatch_height = self.swatches[0].get_size()
+    swatch_rows = int(math.ceil(math.sqrt(len(self.swatches))))
+    swatches_width  = swatch_width * swatch_rows + 20 * (swatch_rows + 1)
+    swatches_height = swatch_height * swatch_rows + 20 * (swatch_rows + 1)
+
+    globe_size = RADIUS * 2
+    width = swatches_width + globe_size
+    height = max(swatches_height, globe_size)
+    window = pygame.display.set_mode((width, height))
+
+    swatch_window = pygame.Surface((swatches_width, swatches_height), flags=pygame.SRCALPHA)
+    for i in xrange(len(self.swatches)):
+      x_offset = swatch_width * (i % swatch_rows) + 20 * (i % swatch_rows + 1)
+      y_offset = swatch_height * (i / swatch_rows) + 20 * (i / swatch_rows + 1)
+      swatch_window.blit(self.swatches[i], (x_offset, y_offset))
+
+    xpos = width - globe_size
+    ypos = int((height - globe_size) / 2)
+    globe_window = window.subsurface((xpos, ypos, globe_size, globe_size))
+
+    clock = pygame.time.Clock()
+    sequence = 0
+    images = self.globe_images
+    while True:
+      if sequence >= len(images):
+        sequence = 0
+      image = images[sequence]
+      sequence += 1
+
+      globe_window.blit(image, (0,0))
+      window.blit(swatch_window, (0, 0))
+      pygame.display.flip()
+
+      for event in pygame.event.get():
+        self.handle_event(event)
+      clock.tick(45)
+
+  @staticmethod
+  def parse_options():
+    parser = optparse.OptionParser(
+        usage='%prog [-v] [-l FILE [-t NAME]] [-j FILE] -s FILE SWATCHES',
+        epilog='SAMPLEFILE is a screenshot of all dyes')
+    if pygame:
+      parser.add_option('-L', '--list_swatches', action='store_true',
+          default=False, help='List available swatch sorting routines')
+      parser.add_option('-v', '--visual', action='store_true', default=False,
+          help='Visualize the dye ramps from WildStar')
+
+    lua_group = optparse.OptionGroup(parser, 'Lua output options')
+    lua_group.add_option('-l', '--lua', type='string', metavar='FILE',
+        default=None, help='Output lua table')
+    lua_group.add_option('-t', '--table', type='string', metavar='NAME',
+        default='dyeramps', help='Name to use for lua table [%default]')
+    parser.add_option_group(lua_group)
+
+    json_group = optparse.OptionGroup(parser, 'JSON output options')
+    json_group.add_option('-j', '--json', type='string', metavar='FILE',
+        default=None, help='Output json')
+    parser.add_option_group(json_group)
+
+    scanner_group = optparse.OptionGroup(parser, 'Sample scanner options')
+    scanner_group.add_option('-s', '--samples', type='string', metavar='FILE',
+        help='Screenshot of dye ramps')
+    """
+    scanner_group.add_option('-W', '--width', type='int', metavar='PIXELS',
+        default=SAMPLE_WIDTH, help='Width of each sample [%default]')
+    scanner_group.add_option('-H', '--height', type='int', metavar='PIXELS',
+        default=SAMPLE_HEIGHT, help='Height of each sample [%default]')
+    scanner_group.add_option('-R', '--row_positions', type='string',
+        metavar='LIST', default=','.join(str(n) for n in SAMPLE_ROWS),
+        help='Y position of each row [%default]')
+    scanner_group.add_option('-C', '--column_positions', type='string',
+        metavar='LIST', default=','.join(str(n) for n in SAMPLE_COLUMNS),
+        help='X position of each column [%default]')
+    scanner_group.add_option('-x', '--x_offset', type='int', metavar='PIXELS',
+        default=0, help='X position of the first column [%default]')
+    scanner_group.add_option('-X', '--x_spacing', type='int', metavar='PIXELS',
+        default=None, help='Distance between each column (overrides -C)')
+    scanner_group.add_option('-y', '--y_offset', type='int', metavar='PIXELS',
+        default=0, help='Y position of the first row [%default]')
+    scanner_group.add_option('-Y', '--y_spacing', type='int', metavar='PIXELS',
+        default=None, help='Distance between each row (overrides -R)')
+    scanner_group.add_option('-c', '--columns', type='int', metavar='COUNT',
+        default=6, help='Number of columns [%default]')
+    scanner_group.add_option('-F', '--first_ramp', type='int',
+        metavar='nRampIndex', default=1, help='Index of first ramp [%default]')
+    scanner_group.add_option('-L', '--last_ramp', type='int',
+        metavar='nRampIndex', default=169, help='Index of last ramp [%default]')
+    """
+    parser.add_option_group(scanner_group)
+
+    options, args = parser.parse_args()
+
+    if not (options.lua or options.json or options.visual or
+        options.list_swatches):
+      sys.stderr.write(
+          'None of --list_swatches, --json, --lua, or --visual provided\n')
+      sys.exit(1)
+
+    if not options.samples and not options.list_swatches:
+      sys.stderr.write('No screenshot of ramps provided\n')
+      sys.exit(1)
+
+    return options, args
+
+  @staticmethod
+  def wrap(s, width=78):
+    strings = []
+    while len(s) > width:
+      index = s.rfind(' ', 0, width + 1)
+      if index < 0:
+        index = s.find(' ', width)
+      if index > 0:
+        strings.append(s[:index])
+        s = s[index+1:]
+      else:
+        break
+    strings.append(s)
+    return strings
+
+  def main(self):
+    options, args = self.parse_options()
+
+    self.scanner = ImageScanner()
+    if options.list_swatches:
+      print 'Available swatches'
+      for key, description in sorted(self.scanner.get_keys()):
+        print '  %-8s %s' % (
+            key, '\n           '.join(self.wrap(description, width=68)))
+      print '''The special color swatch 'Default' is always displayed'''
+      sys.exit(0)
+
+    try:
+      self.scanner.load(options.samples)
+      self.scanner.scan()
+    except Exception as exc:
+      sys.stderr.write('Unable to load screenshot: %s\n' % exc)
+      sys.exit(1)
+
+    if options.lua:
+      self.scanner.write_lua(options.lua, table=options.table)
+
+    if options.json:
+      self.scanner.write_json(options.json)
+
+    if pygame and options.visual:
+      pygame.init()
+
+      self.do_swatches(colorspaces=args)
+      self.do_globe()
+      self.do_draw()
+
+
+if '__main__' == __name__:
+  try:
+    Main().main()
+  except KeyboardInterrupt:
+    pass
