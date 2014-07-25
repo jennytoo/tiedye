@@ -21,3 +21,4 @@ Planned Features
 * Show names for unknown dyes
 * Sort dyes by collection
 * Show where dyes can be found
+* Sort/Filter by quality/price
