@@ -32,6 +32,8 @@ function TieDye:new(o)
     self.ShortList = true
     self.KnownOnly = true
     self.FilterText = ""
+    self.ColorGradientVisible = false
+    self.FilterHue = 180
 
     -- Track all seen dyes here
     self.tDyeInfo = {}
@@ -90,10 +92,11 @@ end
 function TieDye:SaveAccount()
   -- Account-level values (window state)
   local tSave = {}
-  tSave.Version = 1
+  tSave.Version = 2
   tSave.OrderByName = self.OrderByName
   tSave.DetailView = not self.ShortList
   tSave.KnownOnly = self.KnownOnly
+  tSave.FilterHue = self.FilterHue
 
   return tSave
 end
@@ -127,6 +130,9 @@ function TieDye:OnRestore(eLevel, tData)
     self.OrderByName = tData.OrderByName == true
     self.ShortList = tData.DetailView == false
     self.KnownOnly = tData.KnownOnly == true
+    if tData.Version > 1 and tData.FilterHue >= 0 and tData.FilterHue < 360 then
+      self.FilterHue = tData.FilterHue
+    end
   elseif eLevel == GameLib.CodeEnumAddonSaveLevel.General then
     self.tDyeInfo = tData
   end
@@ -150,9 +156,10 @@ function TieDye:AddHooks()
 
   -- Add our own container window
   local carbineDyeContainer = carbineCostumes.wndDyeList:GetParent()
-  self.wndDyeControlContainer = Apollo.LoadForm(self.xmlDoc, "DyeControlContainer", carbineDyeContainer, self)
-  self.wndControls = self.wndDyeControlContainer:FindChild("DyeControlBackground")
-  self.wndDyeList = self.wndDyeControlContainer:FindChild("DyeList")
+  self.wndTieDyeContainer = Apollo.LoadForm(self.xmlDoc, "TieDyeContainer", carbineDyeContainer, self)
+  self.wndControls = self.wndTieDyeContainer:FindChild("DyeControlBackground")
+  self.wndGradient = self.wndControls:FindChild("Gradient")
+  self.wndDyeList = self.wndTieDyeContainer:FindChild("DyeList")
   carbineCostumes.wndDyeList = self.wndDyeList
 
   -- Hook in our handlers
@@ -184,7 +191,7 @@ function TieDye:RemoveHooks()
   -- Remove our handler and destroy our window
   self:Unhook(Apollo.GetAddon("Costumes"), "FillDyes")
   self:Unhook(Apollo.GetAddon("Costumes"), "Reset")
-  self.wndDyeControlContainer:Destroy()
+  self.wndTieDyeContainer:Destroy()
 
   -- Unhide the Dye List window and then remove our reference
   self.carbineWndDyeList:Show(true)
@@ -198,15 +205,33 @@ function TieDye:Reset()
   self.FilterText = ""
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
   self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
-  -- Release the cursor. This is a hack but I didn't see a better way. SetFocus(false) doesn't
-  -- do it.
-  self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(false)
-  self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(true)
+  self.wndControls:FindChild("SearchContainer:SearchInputBox"):ClearFocus()
+  self:ShowGradientWindow(false)
 end
 
 function TieDye:FillDyes()
   self:SetButtons()
   self:FillDyeList()
+end
+
+function TieDye:UpdateGradientMarker()
+  local wndMarker = self.wndGradient:FindChild("HueMarker")
+  local left, top, right, bottom = wndMarker:GetAnchorOffsets()
+  local MarkerWidth = wndMarker:GetWidth()
+  left = self.wndGradient:GetWidth() * self.FilterHue / 359
+  left = math.floor(left - (MarkerWidth / 2))
+  wndMarker:SetAnchorOffsets(left, top, left + MarkerWidth, bottom)
+end
+
+function TieDye:ShowGradientWindow(enable)
+  -- Show/hide the gradient
+  self.ColorGradientVisible = enable
+  self.wndGradient:Show(enable)
+  self.wndControls:FindChild("SearchContainer"):Show(not enable)
+  self.wndControls:FindChild("ColorChooserButton"):SetCheck(enable)
+  if enable then
+    self:UpdateGradientMarker()
+  end
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -222,45 +247,53 @@ function TieDye:OnTieDyeCommand(command, args)
 end
 
 -----------------------------------------------------------------------------------------------
--- TieDye Dye Filter Functions
+-- TieDye Filter Functions
 -----------------------------------------------------------------------------------------------
-function TieDye:MatchHue(tDyeInfo, FilterHue)
-  if not TieDyeData.ramps[tDyeInfo.nRampIndex] then
+function TieDye:MatchHue(nRampIndex, FilterHue)
+  if not TieDyeData.ramps[nRampIndex] then
     return false
   end
 
-  local RampHue = TieDyeData.ramps[tDyeInfo.nRampIndex].hsv.hue
+  local RampHue = TieDyeData.ramps[nRampIndex].hsv.hue
   local Variance = math.abs(FilterHue - RampHue)
   return Variance < 30 or Variance > 329
 end
 
 -- Match hue against the hue of an entered color name
-function TieDye:MatchColorName(tDyeInfo)
+function TieDye:MatchColorName(nRampIndex)
   if TieDyeData.colors[self.FilterText] then
-    return self:MatchHue(tDyeInfo, TieDyeData.colors[self.FilterText].hsv.hue)
+    return self:MatchHue(nRampIndex, TieDyeData.colors[self.FilterText].hsv.hue)
   else
     return false
   end
 end
 
-function TieDye:MatchDye(tDyeInfo)
+function TieDye:MatchDye(tDyeInfo, nRampIndex)
   -- Unknown dye
-  if not tDyeInfo then
-    return not (self.KnownOnly or self.FilterText ~= "")
+  if self.KnownOnly and not tDyeInfo then
+    return false
   end
 
-  -- No filter
+  -- Match hue against the filter hue
+  if self.ColorGradientVisible then
+    return self:MatchHue(nRampIndex, self.FilterHue)
+  end
+
   if self.FilterText == "" then
     return true
   end
 
-  -- Matches color name
-  if self:MatchColorName(tDyeInfo) then
+  -- Filter by color name
+  if self:MatchColorName(nRampIndex) then
     return true
   end
 
   -- Match by substring
-  return string.find(string.lower(tDyeInfo.strName), self.FilterText, 1, true) ~= nil
+  if tDyeInfo == nil then
+    return false
+  else
+    return string.find(string.lower(tDyeInfo.strName), self.FilterText, 1, true) ~= nil
+  end
 end
 
 -----------------------------------------------------------------------------------------------
@@ -278,7 +311,7 @@ end
 function TieDye:MakeDyeWindow(tDyeInfo, idx)
   local strSprite = "CRB_DyeRampSprites:sprDyeRamp_" .. idx
 
-  if not self:MatchDye(tDyeInfo) then
+  if not self:MatchDye(tDyeInfo, idx) then
     return
   end
 
@@ -370,16 +403,13 @@ function TieDye:SetButtons()
 end
 
 ---------------------------------------------------------------------------------------------------
--- DyeControlContainer Functions
+-- TieDyeContainer Functions
 ---------------------------------------------------------------------------------------------------
 
 function TieDye:OnClear( wndHandler, wndControl, eMouseButton )
   if self.FilterText then
     self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText("")
-    -- Release the cursor. This is a hack but I didn't see a better way. SetFocus(false) doesn't
-    -- do it.
-    self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(false)
-    self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(true)
+    self.wndControls:FindChild("SearchContainer:SearchInputBox"):ClearFocus()
     self:OnText(wndHandler, wndControl, "")
   end
 end
@@ -419,6 +449,24 @@ end
 function TieDye:ButtonKnownOnly( wndHandler, wndControl, eMouseButton )
   self.KnownOnly = wndControl:IsChecked()
   self:FillDyeList()
+end
+
+function TieDye:OnColorFilterCheck( wndHandler, wndControl, eMouseButton )
+  self:ShowGradientWindow(true)
+  self:FillDyeList()
+end
+
+function TieDye:OnColorFilterUncheck( wndHandler, wndControl, eMouseButton )
+  self:ShowGradientWindow(false)
+  self:FillDyeList()
+end
+
+function TieDye:OnGradientMouseButtonDown( wndHandler, wndControl, eMouseButton, nLastRelativeMouseX, nLastRelativeMouseY, bDoubleClick, bStopPropagation )
+  if eMouseButton == GameLib.CodeEnumInputMouse.Left then
+    self.FilterHue = math.floor(nLastRelativeMouseX * 359 / self.wndGradient:GetWidth())
+    self:UpdateGradientMarker()
+    self:FillDyeList()
+  end
 end
 
 -----------------------------------------------------------------------------------------------

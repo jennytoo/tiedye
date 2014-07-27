@@ -10,9 +10,9 @@
         <Frame Texture="TieDye\tiedye.tga" x0="35" x1="42" x2="44" x3="48" x4="50" x5="57" y0="110" y1="110" y2="110" y3="120" y4="132" y5="140" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
     </Sprite>
     <Sprite Name="TieDye_Gradient" Cycle="1">
-        <Frame Texture="TieDye\tiedye.tga" x0="53" x1="53" x2="53" x3="53" x4="71" x5="71" y0="62" y1="62" y2="62" y3="62" y4="71" y5="71" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
-    </Sprite>
-    <Sprite Name="TieDye_Gradient" Cycle="1">
         <Frame Texture="TieDye\gradient.tga" x0="0" x1="0" x2="0" x3="0" x4="360" x5="360" y0="0" y1="0" y2="0" y3="0" y4="40" y5="40" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
+    </Sprite>
+    <Sprite Name="TieDye_GradientIcon" Cycle="1">
+        <Frame Texture="TieDye\tiedye.tga" x0="53" x1="53" x2="53" x3="53" x4="71" x5="71" y0="62" y1="62" y2="62" y3="62" y4="71" y5="71" Stretchy="1" HotspotX="0" HotspotY="0" Duration="1.000" StartColor="white" EndColor="white"/>
     </Sprite>
 </Sprites>
