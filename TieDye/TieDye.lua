@@ -27,13 +27,16 @@ function TieDye:new(o)
     setmetatable(o, self)
     self.__index = self
 
-    -- default display state
+    -- Default option values
     self.OrderByName = false
     self.ShortList = true
     self.KnownOnly = true
     self.FilterText = ""
     self.ColorGradientVisible = false
     self.FilterHue = 180
+
+    -- Internal only
+    self.MouseButtonPressed = false
 
     -- Track all seen dyes here
     self.tDyeInfo = {}
@@ -210,6 +213,7 @@ function TieDye:Reset()
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
   self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):ClearFocus()
+  self.MouseButtonPressed = false
 end
 
 function TieDye:FillDyes()
@@ -464,11 +468,46 @@ function TieDye:OnColorFilterUncheck( wndHandler, wndControl, eMouseButton )
   self:FillDyeList()
 end
 
+function TieDye:CalculateNewHue(width, nLastRelativeMouseX)
+  nLastRelativeMouseX = math.min(nLastRelativeMouseX, width - 1)
+  return math.floor(nLastRelativeMouseX * 359 / (width - 1))
+end
+
 function TieDye:OnGradientMouseButtonDown( wndHandler, wndControl, eMouseButton, nLastRelativeMouseX, nLastRelativeMouseY, bDoubleClick, bStopPropagation )
+  if wndHandler ~= wndControl then
+    return
+  end
+
   if eMouseButton == GameLib.CodeEnumInputMouse.Left then
-    self.FilterHue = math.floor(nLastRelativeMouseX * 359 / self.wndGradient:GetWidth())
+    self.MouseButtonPressed = true
+    self.FilterHue = self:CalculateNewHue(self.wndGradient:GetWidth(), nLastRelativeMouseX)
     self:UpdateGradientMarker()
     self:FillDyeList()
+  end
+end
+
+function TieDye:OnGradientMouseButtonUp( wndHandler, wndControl, eMouseButton, nLastRelativeMouseX, nLastRelativeMouseY )
+  if wndHandler ~= wndControl then
+    return
+  end
+
+  if self.MouseButtonPressed and eMouseButton == GameLib.CodeEnumInputMouse.Left then
+    self.MouseButtonPressed = false
+  end
+end
+
+function TieDye:OnGradientMouseMove( wndHandler, wndControl, nLastRelativeMouseX, nLastRelativeMouseY )
+  if wndHandler ~= wndControl then
+    return
+  end
+
+  if self.MouseButtonPressed then
+    local FilterHue = self:CalculateNewHue(self.wndGradient:GetWidth(), nLastRelativeMouseX)
+    if math.abs(self.FilterHue - FilterHue) > 10 then
+      self.FilterHue = FilterHue
+      self:UpdateGradientMarker()
+      self:FillDyeList()
+    end
   end
 end
 
