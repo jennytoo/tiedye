@@ -150,9 +150,9 @@ function TieDye:AddHooks()
 
   -- Add our own container window
   local carbineDyeContainer = carbineCostumes.wndDyeList:GetParent()
-  self.wndDyeContainer = Apollo.LoadForm(self.xmlDoc, "DyeContainer", carbineDyeContainer, self)
-  self.wndControls = self.wndDyeContainer:FindChild("ButtonBackground")
-  self.wndDyeList = self.wndDyeContainer:FindChild("DyeList")
+  self.wndDyeControlContainer = Apollo.LoadForm(self.xmlDoc, "DyeControlContainer", carbineDyeContainer, self)
+  self.wndControls = self.wndDyeControlContainer:FindChild("DyeControlBackground")
+  self.wndDyeList = self.wndDyeControlContainer:FindChild("DyeList")
   carbineCostumes.wndDyeList = self.wndDyeList
 
   -- Hook in our handlers
@@ -184,7 +184,7 @@ function TieDye:RemoveHooks()
   -- Remove our handler and destroy our window
   self:Unhook(Apollo.GetAddon("Costumes"), "FillDyes")
   self:Unhook(Apollo.GetAddon("Costumes"), "Reset")
-  self.wndDyeContainer:Destroy()
+  self.wndDyeControlContainer:Destroy()
 
   -- Unhide the Dye List window and then remove our reference
   self.carbineWndDyeList:Show(true)
@@ -196,11 +196,12 @@ end
 
 function TieDye:Reset()
   self.FilterText = ""
-  self.wndControls:FindChild("EditBox"):SetText(self.FilterText)
+  self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
+  self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
   -- Release the cursor. This is a hack but I didn't see a better way. SetFocus(false) doesn't
   -- do it.
-  self.wndControls:FindChild("EditBox"):Enable(false)
-  self.wndControls:FindChild("EditBox"):Enable(true)
+  self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(false)
+  self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(true)
 end
 
 function TieDye:FillDyes()
@@ -356,7 +357,8 @@ function TieDye:SetButtons()
   self.wndControls:FindChild("ListTypeLong"):SetCheck(not self.ShortList)
   self.wndControls:FindChild("OrderName"):SetCheck(self.OrderByName == true)
   self.wndControls:FindChild("OrderRamp"):SetCheck(not self.OrderByName)
-  self.wndControls:FindChild("EditBox"):SetText(self.FilterText)
+  self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
+  self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
   local KnownOnlyButton = self.wndControls:FindChild("KnownOnly")
   KnownOnlyButton:SetCheck(self.KnownOnly)
   KnownOnlyButton:Enable(not self.OrderByName)
@@ -368,22 +370,23 @@ function TieDye:SetButtons()
 end
 
 ---------------------------------------------------------------------------------------------------
--- DyeContainer Functions
+-- DyeControlContainer Functions
 ---------------------------------------------------------------------------------------------------
 
 function TieDye:OnClear( wndHandler, wndControl, eMouseButton )
   if self.FilterText then
-    self.wndControls:FindChild("EditBox"):SetText("")
+    self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText("")
     -- Release the cursor. This is a hack but I didn't see a better way. SetFocus(false) doesn't
     -- do it.
-    self.wndControls:FindChild("EditBox"):Enable(false)
-    self.wndControls:FindChild("EditBox"):Enable(true)
+    self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(false)
+    self.wndControls:FindChild("SearchContainer:SearchInputBox"):Enable(true)
     self:OnText(wndHandler, wndControl, "")
   end
 end
 
 function TieDye:OnText( wndHandler, wndControl, strText )
   self.FilterText = string.lower(strText)
+  self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(strText ~= "")
   self:FillDyeList()
 end
 
