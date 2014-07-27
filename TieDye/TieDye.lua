@@ -97,6 +97,7 @@ function TieDye:SaveAccount()
   tSave.DetailView = not self.ShortList
   tSave.KnownOnly = self.KnownOnly
   tSave.FilterHue = self.FilterHue
+  tSave.ColorGradientVisible = self.ColorGradientVisible
 
   return tSave
 end
@@ -130,6 +131,7 @@ function TieDye:OnRestore(eLevel, tData)
     self.OrderByName = tData.OrderByName == true
     self.ShortList = tData.DetailView == false
     self.KnownOnly = tData.KnownOnly == true
+    self.ColorGradientVisible = tData.ColorGradientVisible == true
     if tData.Version > 1 and tData.FilterHue >= 0 and tData.FilterHue < 360 then
       self.FilterHue = tData.FilterHue
     end
@@ -175,7 +177,9 @@ function TieDye:AddHooks()
   self.wndControls:FindChild("OrderName"):SetTooltip(L["SORT_NAME"])
   self.wndControls:FindChild("OrderRamp"):SetTooltip(L["SORT_ID"])
   self.wndControls:FindChild("KnownOnly"):SetTooltip(L["SHOW_KNOWN_ONLY"])
+  self.wndControls:FindChild("ColorChooserButton"):SetTooltip(L["SEARCH_COLOR"])
 
+  self:ShowGradientWindow(self.ColorGradientVisible)
   -- Populate dyes
   carbineCostumes:FillDyes()
 end
@@ -206,7 +210,6 @@ function TieDye:Reset()
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
   self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):ClearFocus()
-  self:ShowGradientWindow(false)
 end
 
 function TieDye:FillDyes()
