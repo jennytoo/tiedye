@@ -194,6 +194,20 @@ function TieDye:RemoveHooks()
   carbineCostumes:FillDyes()
 end
 
+function TieDye:Reset()
+  self.FilterText = ""
+  self.wndControls:FindChild("EditBox"):SetText(self.FilterText)
+  -- Release the cursor. This is a hack but I didn't see a better way. SetFocus(false) doesn't
+  -- do it.
+  self.wndControls:FindChild("EditBox"):Enable(false)
+  self.wndControls:FindChild("EditBox"):Enable(true)
+end
+
+function TieDye:FillDyes()
+  self:SetButtons()
+  self:FillDyeList()
+end
+
 ---------------------------------------------------------------------------------------------------
 -- Slash Commands
 ---------------------------------------------------------------------------------------------------
@@ -207,9 +221,28 @@ function TieDye:OnTieDyeCommand(command, args)
 end
 
 -----------------------------------------------------------------------------------------------
--- TieDye Functions
+-- TieDye Dye Filter Functions
 -----------------------------------------------------------------------------------------------
-function TieDye:FilterDye(tDyeInfo)
+function TieDye:MatchHue(tDyeInfo, FilterHue)
+  if not TieDyeData.ramps[tDyeInfo.nRampIndex] then
+    return false
+  end
+
+  local RampHue = TieDyeData.ramps[tDyeInfo.nRampIndex].hsv.hue
+  local Variance = math.abs(FilterHue - RampHue)
+  return Variance < 30 or Variance > 329
+end
+
+-- Match hue against the hue of an entered color name
+function TieDye:MatchColorName(tDyeInfo)
+  if TieDyeData.colors[self.FilterText] then
+    return self:MatchHue(tDyeInfo, TieDyeData.colors[self.FilterText].hsv.hue)
+  else
+    return false
+  end
+end
+
+function TieDye:MatchDye(tDyeInfo)
   -- Unknown dye
   if not tDyeInfo then
     return not (self.KnownOnly or self.FilterText ~= "")
@@ -220,22 +253,18 @@ function TieDye:FilterDye(tDyeInfo)
     return true
   end
 
-  -- Match hue against the hue of an entered color name
-  local hue, rampHue
-  if TieDyeData.colors[self.FilterText] ~= nil then
-    hue = TieDyeData.colors[self.FilterText].hsv.hue
-    if TieDyeData.ramps[tDyeInfo.nRampIndex] ~= nil then
-      rampHue = TieDyeData.ramps[tDyeInfo.nRampIndex].hue
-      if math.abs(hue - rampHue) < 30 or math.abs(hue - rampHue) > 329 then
-        return true
-      end
-    end
+  -- Matches color name
+  if self:MatchColorName(tDyeInfo) then
+    return true
   end
 
   -- Match by substring
   return string.find(string.lower(tDyeInfo.strName), self.FilterText, 1, true) ~= nil
 end
 
+-----------------------------------------------------------------------------------------------
+-- TieDye Functions
+-----------------------------------------------------------------------------------------------
 function TieDye:MakeTooltip(tDyeInfo)
   if tDyeInfo then
     return tDyeInfo.strName
@@ -248,7 +277,7 @@ end
 function TieDye:MakeDyeWindow(tDyeInfo, idx)
   local strSprite = "CRB_DyeRampSprites:sprDyeRamp_" .. idx
 
-  if not self:FilterDye(tDyeInfo) then
+  if not self:MatchDye(tDyeInfo) then
     return
   end
 
@@ -260,14 +289,14 @@ function TieDye:MakeDyeWindow(tDyeInfo, idx)
     tNewDyeInfo.id = tDyeInfo.nId
 
     if self.ShortList then
-      wndNewDye = Apollo.LoadForm(carbineCostumes.xmlDoc, "DyeColor", self.wndDyeList, carbineCostumes)
+      wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeButton", self.wndDyeList, carbineCostumes)
     else
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeButtonLong", self.wndDyeList, carbineCostumes)
       wndNewDye:FindChild("DyeName"):SetText(strName)
     end
   else
     if self.ShortList then
-      wndNewDye = Apollo.LoadForm(self.xmlDoc, "UnknownDyeColor", self.wndDyeList, self)
+      wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColor", self.wndDyeList, self)
     else
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColorLong", self.wndDyeList, self)
       wndNewDye:FindChild("DyeName"):SetText(strName)
@@ -321,6 +350,7 @@ function TieDye:FillDyeList()
   self.wndDyeList:ArrangeChildrenTiles()
 end
 
+-- Set the button state
 function TieDye:SetButtons()
   self.wndControls:FindChild("ListTypeGrid"):SetCheck(self.ShortList)
   self.wndControls:FindChild("ListTypeLong"):SetCheck(not self.ShortList)
@@ -337,16 +367,6 @@ function TieDye:SetButtons()
   end
 end
 
-function TieDye:Reset()
-  self.FilterText = ""
-  self.wndControls:FindChild("EditBox"):SetText(self.FilterText)
-end
-
-function TieDye:FillDyes()
-  self:SetButtons()
-  self:FillDyeList()
-end
-
 ---------------------------------------------------------------------------------------------------
 -- DyeContainer Functions
 ---------------------------------------------------------------------------------------------------
@@ -354,6 +374,10 @@ end
 function TieDye:OnClear( wndHandler, wndControl, eMouseButton )
   if self.FilterText then
     self.wndControls:FindChild("EditBox"):SetText("")
+    -- Release the cursor. This is a hack but I didn't see a better way. SetFocus(false) doesn't
+    -- do it.
+    self.wndControls:FindChild("EditBox"):Enable(false)
+    self.wndControls:FindChild("EditBox"):Enable(true)
     self:OnText(wndHandler, wndControl, "")
   end
 end

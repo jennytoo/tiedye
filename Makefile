@@ -15,7 +15,7 @@ $(COLORS): data/rgb.txt scripts/make_color_table
 	  > "$(COLORS).tmp"; then \
 	  rm -f "$(COLORS)" && mv "$(COLORS).tmp" "$(COLORS)"; \
 	else \
-	  rm -f "$(COLORS).tmp"; \
+	  [ -f "$(COLORS).tmp" ] && rm -f "$(COLORS).tmp" || true; \
 	fi
 
 $(RAMPS): data/ramps.png scripts/WildStar_DyeRamps
@@ -23,7 +23,7 @@ $(RAMPS): data/ramps.png scripts/WildStar_DyeRamps
 	  -s data/ramps.png; then \
 	  rm -f "$(RAMPS)" && mv "$(RAMPS).tmp" "$(RAMPS)"; \
 	else \
-	  rm "$(RAMPS).tmp"; \
+	  [ -f "$(RAMPS).tmp" ] && rm "$(RAMPS).tmp" || true; \
 	fi
 
 data: $(COLORS) $(RAMPS)
