@@ -474,11 +474,7 @@ function TieDye:CalculateNewHue(width, nLastRelativeMouseX)
 end
 
 function TieDye:OnGradientMouseButtonDown( wndHandler, wndControl, eMouseButton, nLastRelativeMouseX, nLastRelativeMouseY, bDoubleClick, bStopPropagation )
-  if wndHandler ~= wndControl then
-    return
-  end
-
-  if eMouseButton == GameLib.CodeEnumInputMouse.Left then
+  if wndHandler == wndControl and eMouseButton == GameLib.CodeEnumInputMouse.Left then
     self.MouseButtonPressed = true
     self.FilterHue = self:CalculateNewHue(self.wndGradient:GetWidth(), nLastRelativeMouseX)
     self:UpdateGradientMarker()
@@ -487,27 +483,25 @@ function TieDye:OnGradientMouseButtonDown( wndHandler, wndControl, eMouseButton,
 end
 
 function TieDye:OnGradientMouseButtonUp( wndHandler, wndControl, eMouseButton, nLastRelativeMouseX, nLastRelativeMouseY )
-  if wndHandler ~= wndControl then
-    return
-  end
-
   if self.MouseButtonPressed and eMouseButton == GameLib.CodeEnumInputMouse.Left then
     self.MouseButtonPressed = false
   end
 end
 
 function TieDye:OnGradientMouseMove( wndHandler, wndControl, nLastRelativeMouseX, nLastRelativeMouseY )
-  if wndHandler ~= wndControl then
-    return
-  end
-
-  if self.MouseButtonPressed then
+  if wndHandler == wndControl and self.MouseButtonPressed then
     local FilterHue = self:CalculateNewHue(self.wndGradient:GetWidth(), nLastRelativeMouseX)
     if math.abs(self.FilterHue - FilterHue) > 10 then
       self.FilterHue = FilterHue
       self:UpdateGradientMarker()
       self:FillDyeList()
     end
+  end
+end
+
+function TieDye:OnGradientMouseExit( wndHandler, wndControl, x, y )
+  if wndHandler == wndControl then
+    self.MouseButtonPressed = false
   end
 end
 
