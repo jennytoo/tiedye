@@ -107,13 +107,29 @@ end
 
 function TieDye:SaveGeneral()
   -- General values (all encountered dyes)
-  local tSave = {}
-  for idx, tDyeInfo in ipairs(self.tDyeInfo) do
-    tSave[tDyeInfo.nId] = tDyeInfo
+  local now = os.time()
+  local max_age = now - (86400 * 14)
+  local tSave = {
+    Version = 1,
+    Locale = { [L["Locale"]] = {} },
+  }
+
+  -- Copy over records (but not if too old)
+  if self.tDyeInfo.Locale ~= nil then
+    for locale, dyes in pairs(self.tDyeInfo.Locale) do
+      local newDyes = {}
+      for idx, tDyeInfo in pairs(dyes) do
+        if tDyeInfo.lastSeen > max_age then
+          newDyes[idx] = tDyeInfo
+        end
+      end
+      tSave.Locale[locale] = newDyes
+    end
   end
 
   for idx, tDyeInfo in ipairs(GameLib.GetKnownDyes()) do
-    tSave[tDyeInfo.nId] = tDyeInfo
+    tDyeInfo.lastSeen = now
+    tSave.Locale[L["Locale"]][tDyeInfo.nId] = tDyeInfo
   end
 
   return tSave
@@ -139,7 +155,9 @@ function TieDye:OnRestore(eLevel, tData)
       self.FilterHue = tData.FilterHue
     end
   elseif eLevel == GameLib.CodeEnumAddonSaveLevel.General then
-    self.tDyeInfo = tData
+    if tData.Version == 1 then
+      self.tDyeInfo = tData
+    end
   end
 end
 
@@ -296,22 +314,25 @@ function TieDye:MatchDye(tDyeInfo, nRampIndex)
   end
 
   -- Match by substring
-  if tDyeInfo == nil then
-    return false
-  else
-    return string.find(string.lower(tDyeInfo.strName), self.FilterText, 1, true) ~= nil
-  end
+  local dyeName = self:GetDyeName(tDyeInfo, nRampIndex)
+  return string.find(string.lower(dyeName), self.FilterText, 1, true) ~= nil
 end
 
 -----------------------------------------------------------------------------------------------
 -- TieDye Functions
 -----------------------------------------------------------------------------------------------
-function TieDye:MakeTooltip(tDyeInfo)
+function TieDye:GetDyeName(tDyeInfo, nRampIndex)
   if tDyeInfo then
     return tDyeInfo.strName
+  elseif TieDyeData.nRampIndex_to_nId[nRampIndex] then
+    return TieDyeData.dyes[TieDyeData.nRampIndex_to_nId[nRampIndex]].name
   else
-    return L["LOCKED"]
+    return L["NO_INFO"]
   end
+end
+
+function TieDye:MakeTooltip(tDyeInfo, nRampIndex)
+  return self:GetDyeName(tDyeInfo, nRampIndex)
 end
 
 -- Define general functions here
@@ -322,7 +343,7 @@ function TieDye:MakeDyeWindow(tDyeInfo, idx)
     return
   end
 
-  local strName = self:MakeTooltip(tDyeInfo)
+  local strName = self:MakeTooltip(tDyeInfo, idx)
   local wndNewDye = nil
   local tNewDyeInfo = {}
 
@@ -342,7 +363,7 @@ function TieDye:MakeDyeWindow(tDyeInfo, idx)
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColorLong", self.wndDyeList, self)
       wndNewDye:FindChild("DyeName"):SetText(strName)
     end
-    wndNewDye:SetOpacity(0.25, 1)
+    wndNewDye:SetOpacity(0.30, 1)
   end
   tNewDyeInfo.strName = strName
   tNewDyeInfo.strSprite = strSprite
@@ -372,10 +393,28 @@ function TieDye:FillDyesByRamp()
 end
 
 function TieDye:FillDyesByName()
-  local tDyeSort = GameLib.GetKnownDyes()
-  table.sort(tDyeSort, function (a,b) return a.strName < b.strName end)
-  for idx, tDyeInfo in ipairs(tDyeSort) do
-    self:MakeDyeWindow(tDyeInfo, tDyeInfo.nRampIndex)
+  local tDyeSort = {}
+  local maxRampIndex = 169
+  for idx, tDyeInfo in ipairs(GameLib.GetKnownDyes()) do
+    tDyeSort[tDyeInfo.nRampIndex] = {
+      key = tDyeInfo.strName,
+      nRampIndex = tDyeInfo.nRampIndex,
+      tDyeInfo = tDyeInfo,
+    }
+    if tDyeInfo.nRampIndex > maxRampIndex then
+      maxRampIndex = tDyeInfo.nRampIndex
+    end
+  end
+
+  for idx = 1, maxRampIndex do
+    if not tDyeSort[idx] then
+      tDyeSort[idx] = { key = self:GetDyeName(nil, idx), nRampIndex = idx }
+    end
+  end
+
+  table.sort(tDyeSort, function (a,b) return a.key < b.key end)
+  for k, v in ipairs(tDyeSort) do
+    self:MakeDyeWindow(v.tDyeInfo, v.nRampIndex)
   end
 end
 
@@ -399,14 +438,7 @@ function TieDye:SetButtons()
   self.wndControls:FindChild("OrderRamp"):SetCheck(not self.OrderByName)
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
   self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
-  local KnownOnlyButton = self.wndControls:FindChild("KnownOnly")
-  KnownOnlyButton:SetCheck(self.KnownOnly)
-  KnownOnlyButton:Enable(not self.OrderByName)
-  if self.OrderByName then
-    KnownOnlyButton:SetOpacity(0.5, 1)
-  else
-    KnownOnlyButton:SetOpacity(1, 1)
-  end
+  self.wndControls:FindChild("KnownOnly"):SetCheck(self.KnownOnly)
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -429,17 +461,11 @@ end
 
 function TieDye:OnOrderByName( wndHandler, wndControl, eMouseButton )
   self.OrderByName = true
-  local KnownOnlyButton = self.wndControls:FindChild("KnownOnly")
-  KnownOnlyButton:Enable(false)
-  KnownOnlyButton:SetOpacity(0.5, 1)
   self:FillDyeList()
 end
 
 function TieDye:OnOrderByRamp( wndHandler, wndControl, eMouseButton )
   self.OrderByName = false
-  local KnownOnlyButton = self.wndControls:FindChild("KnownOnly")
-  KnownOnlyButton:Enable(true)
-  KnownOnlyButton:SetOpacity(1, 1)
   self:FillDyeList()
 end
 
