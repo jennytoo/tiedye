@@ -397,6 +397,7 @@ function TieDye:MakeDyeWindow(tDyeInfo)
     else
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColorLong", self.wndDyeList, self)
       wndNewDye:FindChild("DyeName"):SetText(self:MakeTooltip(tDyeInfo))
+      wndNewDye:SetOpacity(0.50, 1)
     end
   end
   wndNewDye:SetData(tNewDyeInfo)
