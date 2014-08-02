@@ -16,8 +16,11 @@ local carbineCostumes, L
 -----------------------------------------------------------------------------------------------
 -- Constants
 -----------------------------------------------------------------------------------------------
-
-
+local CodeEnumOrderBy = {
+  NAME = 'NAME',
+  RAMP = 'RAMP',
+  COST = 'COST'
+}
 
 -----------------------------------------------------------------------------------------------
 -- Initialization
@@ -28,7 +31,7 @@ function TieDye:new(o)
     self.__index = self
 
     -- Default option values
-    self.OrderByName = false
+    self.SortOrder = CodeEnumOrderBy.NAME
     self.ShortList = true
     self.KnownOnly = true
     self.FilterText = ""
@@ -36,6 +39,10 @@ function TieDye:new(o)
     self.FilterHue = 180
 
     -- Internal only
+    self.SortedDyes = {}
+    self.KnownDyesById = {}
+    self.KnownDyesByRamp = {}
+    self.KnownDyes = 0
     self.MouseButtonPressed = false
 
     -- Track all seen dyes here
@@ -63,13 +70,11 @@ function TieDye:OnLoad()
   L = Apollo.GetPackage("Gemini:Locale-1.0").tPackage:GetLocale("TieDye", false)
   carbineCostumes = Apollo.GetAddon("Costumes")
 
-  -- load our form file
+  -- Load our form file
   self.xmlDoc = XmlDoc.CreateFromFile("TieDye.xml")
   self.xmlDoc:RegisterCallback("OnDocLoaded", self)
   Apollo.LoadSprites("TieDye_Sprites.xml")
-
-  -- Add a slash command
-  Apollo.RegisterSlashCommand("tiedye", "OnTieDyeCommand", self)
+  self:LoadDyes()
 end
 
 -----------------------------------------------------------------------------------------------
@@ -78,10 +83,10 @@ end
 function TieDye:OnDocLoaded()
 
   if self.xmlDoc ~= nil and self.xmlDoc:IsLoaded() then
-    -- Register handlers for events, slash commands and timer, etc.
+    Apollo.RegisterSlashCommand("tiedye", "OnTieDyeCommand", self)
+
     self:AddHooks()
 
-    -- Do additional Addon initialization here
     if Apollo.GetAddon("Rover") then
       SendVarToRover("TieDye", self)
     end
@@ -95,8 +100,8 @@ end
 function TieDye:SaveAccount()
   -- Account-level values (window state)
   local tSave = {}
-  tSave.Version = 2
-  tSave.OrderByName = self.OrderByName
+  tSave.Version = 3
+  tSave.SortOrder = self.SortOrder
   tSave.DetailView = not self.ShortList
   tSave.KnownOnly = self.KnownOnly
   tSave.FilterHue = self.FilterHue
@@ -118,18 +123,18 @@ function TieDye:SaveGeneral()
   if self.tDyeInfo.Locale ~= nil then
     for locale, dyes in pairs(self.tDyeInfo.Locale) do
       local newDyes = {}
-      for idx, tDyeInfo in pairs(dyes) do
+      for nId, tDyeInfo in pairs(dyes) do
         if tDyeInfo.lastSeen > max_age then
-          newDyes[idx] = tDyeInfo
+          newDyes[nId] = tDyeInfo
         end
       end
       tSave.Locale[locale] = newDyes
     end
   end
 
-  for idx, tDyeInfo in ipairs(GameLib.GetKnownDyes()) do
+  for nId, tDyeInfo in pairs(self.KnownDyesById) do
     tDyeInfo.lastSeen = now
-    tSave.Locale[L["Locale"]][tDyeInfo.nId] = tDyeInfo
+    tSave.Locale[L["Locale"]][nId] = tDyeInfo
   end
 
   return tSave
@@ -147,12 +152,18 @@ end
 
 function TieDye:OnRestore(eLevel, tData)
   if eLevel == GameLib.CodeEnumAddonSaveLevel.Account then
-    self.OrderByName = tData.OrderByName == true
     self.ShortList = tData.DetailView == false
     self.KnownOnly = tData.KnownOnly == true
     self.ColorGradientVisible = tData.ColorGradientVisible == true
+
     if tData.Version > 1 and tData.FilterHue >= 0 and tData.FilterHue < 360 then
       self.FilterHue = tData.FilterHue
+    end
+
+    if tData.Version <= 2 then
+      self.SortOrder = (tData.OrderByName == true) and CodeEnumOrderBy.NAME or CodeEnumOrderBy.RAMP
+    else
+      self.SortOrder = CodeEnumOrderBy[tData.SortOrder] or CodeEnumOrderBy.RAMP
     end
   elseif eLevel == GameLib.CodeEnumAddonSaveLevel.General then
     if tData.Version == 1 then
@@ -201,8 +212,11 @@ function TieDye:AddHooks()
   self.wndControls:FindChild("ColorChooserButton"):SetTooltip(L["SEARCH_COLOR"])
 
   self:ShowGradientWindow(self.ColorGradientVisible)
+
   -- Populate dyes
-  carbineCostumes:FillDyes()
+  carbineCostumes:Reset()
+
+  ChatSystemLib.PostOnChannel(ChatSystemLib.ChatChannel_System, L['TIEDYE_ENABLED'])
 end
 
 function TieDye:RemoveHooks()
@@ -223,7 +237,9 @@ function TieDye:RemoveHooks()
   self.carbineWndDyeList = nil
 
   -- Populate dyes
-  carbineCostumes:FillDyes()
+  carbineCostumes:Reset()
+
+  ChatSystemLib.PostOnChannel(ChatSystemLib.ChatChannel_System, L['TIEDYE_DISABLED'])
 end
 
 function TieDye:Reset()
@@ -236,6 +252,7 @@ end
 
 function TieDye:FillDyes()
   self:SetButtons()
+  self:GetKnownDyes()
   self:FillDyeList()
 end
 
@@ -262,12 +279,35 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Slash Commands
 ---------------------------------------------------------------------------------------------------
-
 function TieDye:OnTieDyeCommand(command, args)
   if self:IsHooked(Apollo.GetAddon("Costumes"), "FillDyes") then
     self:RemoveHooks()
   else
     self:AddHooks()
+  end
+end
+
+---------------------------------------------------------------------------------------------------
+-- Load Dyes (Thanks to http://www.curse.com/ws-addons/wildstar/222537-dyepreview for the info)
+---------------------------------------------------------------------------------------------------
+function TieDye:LoadDyes()
+  TieDyeData.nRampIndex_to_nId = {}
+  TieDyeData.dyes = {}
+  -- [1] = nId
+  -- [2] = nRampIndex
+  -- [3] = cost multiplier (normally not exposed via GetKnownDyes())
+  -- [4] = strName
+  local dyes = dofile(Apollo.GetAssetFolder() .. [[\libs\Dyes.lua]])
+  for _, dye in ipairs(dyes) do
+    if "(Unnamed)" ~= dye[4] then
+      TieDyeData.nRampIndex_to_nId[dye[2]] = dye[1]
+      TieDyeData.dyes[dye[1]] = {
+        nId = dye[1],
+        nRampIndex = dye[2],
+        costMultiplier = dye[3],
+        strName = dye[4]
+      }
+    end
   end
 end
 
@@ -293,15 +333,17 @@ function TieDye:MatchColorName(nRampIndex)
   end
 end
 
-function TieDye:MatchDye(tDyeInfo, nRampIndex)
+function TieDye:MatchDye(tDyeInfo)
   -- Unknown dye
-  if self.KnownOnly and not tDyeInfo then
-    return false
+  if self.KnownOnly then
+    if not (tDyeInfo.nId and self.KnownDyesById[tDyeInfo.nId]) then
+      return false
+    end
   end
 
   -- Match hue against the filter hue
   if self.ColorGradientVisible then
-    return self:MatchHue(nRampIndex, self.FilterHue)
+    return self:MatchHue(tDyeInfo.nRampIndex, self.FilterHue)
   end
 
   if self.FilterText == "" then
@@ -309,77 +351,95 @@ function TieDye:MatchDye(tDyeInfo, nRampIndex)
   end
 
   -- Filter by color name
-  if self:MatchColorName(nRampIndex) then
+  if self:MatchColorName(tDyeInfo.nRampIndex) then
     return true
   end
 
   -- Match by substring
-  local dyeName = self:GetDyeName(tDyeInfo, nRampIndex)
-  return string.find(string.lower(dyeName), self.FilterText, 1, true) ~= nil
+  return string.find(string.lower(tDyeInfo.strName), self.FilterText, 1, true) ~= nil
 end
 
 -----------------------------------------------------------------------------------------------
 -- TieDye Functions
 -----------------------------------------------------------------------------------------------
-function TieDye:GetDyeName(tDyeInfo, nRampIndex)
-  if tDyeInfo then
-    return tDyeInfo.strName
-  elseif TieDyeData.nRampIndex_to_nId[nRampIndex] then
-    return TieDyeData.dyes[TieDyeData.nRampIndex_to_nId[nRampIndex]].name
-  else
-    return L["NO_INFO"]
-  end
-end
-
-function TieDye:MakeTooltip(tDyeInfo, nRampIndex)
-  return self:GetDyeName(tDyeInfo, nRampIndex)
+function TieDye:MakeTooltip(tDyeInfo)
+  return tDyeInfo.strName
 end
 
 -- Define general functions here
-function TieDye:MakeDyeWindow(tDyeInfo, idx)
-  local strSprite = "CRB_DyeRampSprites:sprDyeRamp_" .. idx
-
-  if not self:MatchDye(tDyeInfo, idx) then
+function TieDye:MakeDyeWindow(tDyeInfo)
+  if not self:MatchDye(tDyeInfo) then
     return
   end
 
-  local strName = self:MakeTooltip(tDyeInfo, idx)
+  local strSprite = "CRB_DyeRampSprites:sprDyeRamp_" .. tDyeInfo.nRampIndex
+  local strName = self:MakeTooltip(tDyeInfo)
   local wndNewDye = nil
-  local tNewDyeInfo = {}
+  local tNewDyeInfo = {
+    nRampIndex = tDyeInfo.nRampIndex,
+    strName = tDyeInfo.strName,
+    strSprite = strSprite,
+    id = tDyeInfo.nId
+  }
 
-  if tDyeInfo then
-    tNewDyeInfo.id = tDyeInfo.nId
-
+  if tDyeInfo.nId and self.KnownDyesById[tDyeInfo.nId] then
     if self.ShortList then
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeButton", self.wndDyeList, carbineCostumes)
     else
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeButtonLong", self.wndDyeList, carbineCostumes)
-      wndNewDye:FindChild("DyeName"):SetText(strName)
+      wndNewDye:FindChild("DyeName"):SetText(self:MakeTooltip(tDyeInfo))
     end
   else
     if self.ShortList then
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColor", self.wndDyeList, self)
     else
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColorLong", self.wndDyeList, self)
-      wndNewDye:FindChild("DyeName"):SetText(strName)
+      wndNewDye:FindChild("DyeName"):SetText(self:MakeTooltip(tDyeInfo))
     end
     wndNewDye:SetOpacity(0.30, 1)
   end
-  tNewDyeInfo.strName = strName
-  tNewDyeInfo.strSprite = strSprite
-  tNewDyeInfo.nRampIndex = idx
   wndNewDye:SetData(tNewDyeInfo)
 
   wndNewDye:FindChild("DyeSwatchArtHack:DyeSwatch"):SetSprite(strSprite)
   wndNewDye:SetTooltip(strName)
 end
 
-function TieDye:FillDyesByRamp()
-  local knownDyes = {}
-  local minRampIndex = 1 -- Is 0 valid? Best be safe, but assume it isn't by default
+function TieDye:SortDyes()
+  local SortFunction
+  if self.SortOrder == CodeEnumOrderBy.NAME then
+    SortFunction = function(a, b) return a.strName < b.strName end
+  else
+    SortFunction = function(a, b)
+      local RampDataA = TieDyeData.ramps[a.nRampIndex]
+      local RampDataB = TieDyeData.ramps[b.nRampIndex]
+      local OrderA = RampDataA and RampDataA.order or a.nRampIndex
+      local OrderB = RampDataB and RampDataB.order or b.nRampIndex
+      return OrderA < OrderB
+    end
+  end
+
+  table.sort(self.SortedDyes, SortFunction)
+end
+
+function TieDye:GetKnownDyes()
+  local dyesLoaded = (self.KnownDyes > 0)
+
+  -- Build a table mapping ramp -> dye for known dyes
+  local minRampIndex = 1  -- Is 0 valid? Best be safe, but assume it isn't by default
   local maxRampIndex = 169
-  for idx, tDyeInfo in ipairs(GameLib.GetKnownDyes()) do
-    knownDyes[tDyeInfo.nRampIndex] = tDyeInfo
+  local newDyes = false
+  for _, tDyeInfo in ipairs(GameLib.GetKnownDyes()) do
+    if not self.KnownDyesById[tDyeInfo.nId] then
+      newDyes = true
+      self.KnownDyes = self.KnownDyes + 1
+      self.KnownDyesById[tDyeInfo.nId] = tDyeInfo
+      if dyesLoaded then
+        ChatSystemLib.PostOnChannel(ChatSystemLib.ChatChannel_System,
+          string.format(L["DYE_LEARNED"], tDyeInfo.strName))
+      end
+    end
+    self.KnownDyesByRamp[tDyeInfo.nRampIndex] = tDyeInfo
+
     if tDyeInfo.nRampIndex > maxRampIndex then
       maxRampIndex = tDyeInfo.nRampIndex
     elseif 0 == tDyeInfo.nRampIndex then
@@ -387,44 +447,47 @@ function TieDye:FillDyesByRamp()
     end
   end
 
-  for idx = minRampIndex, maxRampIndex do
-    self:MakeDyeWindow(knownDyes[idx], idx)
+  if not newDyes then
+    return
   end
-end
 
-function TieDye:FillDyesByName()
-  local tDyeSort = {}
-  local maxRampIndex = 169
-  for idx, tDyeInfo in ipairs(GameLib.GetKnownDyes()) do
-    tDyeSort[tDyeInfo.nRampIndex] = {
-      key = tDyeInfo.strName,
-      nRampIndex = tDyeInfo.nRampIndex,
-      tDyeInfo = tDyeInfo,
-    }
-    if tDyeInfo.nRampIndex > maxRampIndex then
-      maxRampIndex = tDyeInfo.nRampIndex
+  if 1 == self.KnownDyes then
+    ChatSystemLib.PostOnChannel(ChatSystemLib.ChatChannel_Debug,
+      string.format(L["ONE_DYE_KNOWN"]))
+  else
+    ChatSystemLib.PostOnChannel(ChatSystemLib.ChatChannel_Debug,
+      string.format(L["DYES_KNOWN"], self.KnownDyes))
+  end
+
+  -- Fill the two tables for sorting
+  self.SortedDyes = {}
+  local tDyeInfo, nId
+  for nRampIndex = minRampIndex, maxRampIndex do
+    tDyeInfo = self.KnownDyesByRamp[nRampIndex]
+    if nil == tDyeInfo then
+      nId = TieDyeData.nRampIndex_to_nId[nRampIndex]
+      if nId and TieDyeData.dyes[nId] then
+        -- Unknown dye we have data for
+        tDyeInfo = TieDyeData.dyes[nId]
+      else
+        -- Unknown dye we have no data for, make a dummy record
+        tDyeInfo = {
+          nRampIndex = nRampIndex,
+          strName = L["NO_INFO"]
+        }
+      end
     end
+    table.insert(self.SortedDyes, tDyeInfo)
   end
 
-  for idx = 1, maxRampIndex do
-    if not tDyeSort[idx] then
-      tDyeSort[idx] = { key = self:GetDyeName(nil, idx), nRampIndex = idx }
-    end
-  end
-
-  table.sort(tDyeSort, function (a,b) return a.key < b.key end)
-  for k, v in ipairs(tDyeSort) do
-    self:MakeDyeWindow(v.tDyeInfo, v.nRampIndex)
-  end
+  self:SortDyes()
 end
 
 function TieDye:FillDyeList()
   self.wndDyeList:DestroyChildren()
 
-  if self.OrderByName then
-    self:FillDyesByName()
-  else
-    self:FillDyesByRamp()
+  for _, tDyeInfo in ipairs(self.SortedDyes) do
+    self:MakeDyeWindow(tDyeInfo)
   end
 
   self.wndDyeList:ArrangeChildrenTiles()
@@ -434,8 +497,8 @@ end
 function TieDye:SetButtons()
   self.wndControls:FindChild("ListTypeGrid"):SetCheck(self.ShortList)
   self.wndControls:FindChild("ListTypeLong"):SetCheck(not self.ShortList)
-  self.wndControls:FindChild("OrderName"):SetCheck(self.OrderByName == true)
-  self.wndControls:FindChild("OrderRamp"):SetCheck(not self.OrderByName)
+  self.wndControls:FindChild("OrderName"):SetCheck(self.SortOrder == CodeEnumOrderBy.NAME)
+  self.wndControls:FindChild("OrderRamp"):SetCheck(self.SortOrder == CodeEnumOrderBy.RAMP)
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
   self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
   self.wndControls:FindChild("KnownOnly"):SetCheck(self.KnownOnly)
@@ -460,12 +523,14 @@ function TieDye:OnText( wndHandler, wndControl, strText )
 end
 
 function TieDye:OnOrderByName( wndHandler, wndControl, eMouseButton )
-  self.OrderByName = true
+  self.SortOrder = CodeEnumOrderBy.NAME
+  self:SortDyes()
   self:FillDyeList()
 end
 
 function TieDye:OnOrderByRamp( wndHandler, wndControl, eMouseButton )
-  self.OrderByName = false
+  self.SortOrder = CodeEnumOrderBy.RAMP
+  self:SortDyes()
   self:FillDyeList()
 end
 
