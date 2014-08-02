@@ -3,6 +3,7 @@
 -----------------------------------------------------------------------------------------------
 
 require "Apollo"
+require "ChatSystemLib"
 require "GameLib"
 require "Window"
 
@@ -392,11 +393,11 @@ function TieDye:MakeDyeWindow(tDyeInfo)
   else
     if self.ShortList then
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColor", self.wndDyeList, self)
+      wndNewDye:SetOpacity(0.30, 1)
     else
       wndNewDye = Apollo.LoadForm(self.xmlDoc, "DyeColorLong", self.wndDyeList, self)
       wndNewDye:FindChild("DyeName"):SetText(self:MakeTooltip(tDyeInfo))
     end
-    wndNewDye:SetOpacity(0.30, 1)
   end
   wndNewDye:SetData(tNewDyeInfo)
 
@@ -459,7 +460,7 @@ function TieDye:GetKnownDyes()
       string.format(L["DYES_KNOWN"], self.KnownDyes))
   end
 
-  -- Fill the two tables for sorting
+  -- Fill the table for sorting
   self.SortedDyes = {}
   local tDyeInfo, nId
   for nRampIndex = minRampIndex, maxRampIndex do
