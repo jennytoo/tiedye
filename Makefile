@@ -1,5 +1,5 @@
 NAME=TieDye
-VERSION=1.0
+VERSION=1.2
 PACKAGE=$(NAME)-$(VERSION).zip
 
 DATA=$(NAME)/data
