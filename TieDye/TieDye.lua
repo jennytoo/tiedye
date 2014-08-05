@@ -298,7 +298,7 @@ function TieDye:LoadDyes()
   -- [2] = nRampIndex
   -- [3] = cost multiplier (normally not exposed via GetKnownDyes())
   -- [4] = strName
-  local dyes = dofile(Apollo.GetAssetFolder() .. [[\libs\Dyes.lua]])
+  local dyes = dofile(Apollo.GetAssetFolder() .. [[\libs\]] .. L["DYE_DATA_FILE"])
   for _, dye in ipairs(dyes) do
     if "(Unnamed)" ~= dye[4] then
       TieDyeData.nRampIndex_to_nId[dye[2]] = dye[1]

@@ -14,10 +14,10 @@ Features
 * Display dyes in a grid or using a long listing showing the dye gradient and name
 * Search for dyes by name
 * Searching for dyes by entering the name or choosing with a color picker
+* Show names for unknown dyes (Thanks to DyePreview - http://www.curse.com/ws-addons/wildstar/222537-dyepreview)
 
 Planned Features
 
-* Show names for unknown dyes
 * Sort dyes by collection
 * Show where dyes can be found
 * Sort/Filter by quality/price

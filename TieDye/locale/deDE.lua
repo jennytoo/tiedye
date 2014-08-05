@@ -16,3 +16,4 @@ L["SEARCH_QUALITY"] = "Qualität suchen"
 L["NO_INFO"] = "Keine Angaben vorhanden"
 L["LOCKED"] = "Noch unbekannt" -- Still Unknown
 L["DYE_LEARNED"] = "Benutzung von %s erlernt"
+L["DYE_DATA_FILE"] = "Dyes-DE.lua"
