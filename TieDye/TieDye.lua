@@ -292,20 +292,33 @@ end
 -- Load Dyes (Thanks to http://www.curse.com/ws-addons/wildstar/222537-dyepreview for the info)
 ---------------------------------------------------------------------------------------------------
 function TieDye:LoadDyes()
+  -- The following formulas approximate the cost to dye a slot in my testing
+  -- slot 1 = vendor price *  9.25 * costMultiplier
+  -- slot 2 = vendor price *  6.25 * costMultiplier
+  -- slot 3 = vendor price *  5.75 * costMultiplier
+  -- all    = vendor price * 21.25 * costMultiplier
+  -- everything = vendor price * 21.25 * costMultiplier * 6
+
   TieDyeData.nRampIndex_to_nId = {}
   TieDyeData.dyes = {}
   -- [1] = nId
   -- [2] = nRampIndex
   -- [3] = cost multiplier (normally not exposed via GetKnownDyes())
   -- [4] = strName
+  local calculatedCost
   local dyes = dofile(Apollo.GetAssetFolder() .. [[\libs\]] .. L["DYE_DATA_FILE"])
   for _, dye in ipairs(dyes) do
     if "(Unnamed)" ~= dye[4] then
       TieDyeData.nRampIndex_to_nId[dye[2]] = dye[1]
+      -- 6 pieces of armor, 3 slots each, vendoring at 3g
+      calculatedCost = 30000 * 21.25 * (dye[3] or 0) * 6
       TieDyeData.dyes[dye[1]] = {
         nId = dye[1],
         nRampIndex = dye[2],
         costMultiplier = dye[3],
+        costGroup = calculatedCost <= 100000 and 1 or
+                    calculatedCost <= 1000000 and 2 or
+                    calculatedCost <= 10000000 and 3 or 4,
         strName = dye[4]
       }
     end
@@ -364,7 +377,11 @@ end
 -- TieDye Functions
 -----------------------------------------------------------------------------------------------
 function TieDye:MakeTooltip(tDyeInfo)
-  return tDyeInfo.strName
+  if tDyeInfo.costGroup then
+    return string.format("%s (%s)", tDyeInfo.strName, string.rep("$", tDyeInfo.costGroup))
+  else
+    return tDyeInfo.strName
+  end
 end
 
 -- Define general functions here
@@ -410,6 +427,22 @@ function TieDye:SortDyes()
   local SortFunction
   if self.SortOrder == CodeEnumOrderBy.NAME then
     SortFunction = function(a, b) return a.strName < b.strName end
+  elseif self.SortOrder == CodeEnumOrderBy.COST then
+    SortFunction = function(a, b)
+      if a.costGroup  == b.costGroup then
+        local RampDataA = TieDyeData.ramps[a.nRampIndex]
+        local RampDataB = TieDyeData.ramps[b.nRampIndex]
+        local OrderA = RampDataA and RampDataA.order or a.nRampIndex
+        local OrderB = RampDataB and RampDataB.order or b.nRampIndex
+        return OrderA < OrderB
+      elseif a.costGroup and b.costGroup then
+        return a.costGroup < b.costGroup
+      elseif a.costGroup then
+        return true
+      else
+        return false
+      end
+    end
   else
     SortFunction = function(a, b)
       local RampDataA = TieDyeData.ramps[a.nRampIndex]
@@ -438,6 +471,10 @@ function TieDye:GetKnownDyes()
       if dyesLoaded then
         ChatSystemLib.PostOnChannel(ChatSystemLib.ChatChannel_System,
           string.format(L["DYE_LEARNED"], tDyeInfo.strName))
+      end
+      if TieDyeData.dyes[tDyeInfo.nId] then
+        tDyeInfo.costMultiplier = TieDyeData.dyes[tDyeInfo.nId].costMultiplier
+        tDyeInfo.costGroup = TieDyeData.dyes[tDyeInfo.nId].costGroup
       end
     end
     self.KnownDyesByRamp[tDyeInfo.nRampIndex] = tDyeInfo
@@ -501,6 +538,7 @@ function TieDye:SetButtons()
   self.wndControls:FindChild("ListTypeLong"):SetCheck(not self.ShortList)
   self.wndControls:FindChild("OrderName"):SetCheck(self.SortOrder == CodeEnumOrderBy.NAME)
   self.wndControls:FindChild("OrderRamp"):SetCheck(self.SortOrder == CodeEnumOrderBy.RAMP)
+  self.wndControls:FindChild("OrderCost"):SetCheck(self.SortOrder == CodeEnumOrderBy.COST)
   self.wndControls:FindChild("SearchContainer:SearchInputBox"):SetText(self.FilterText)
   self.wndControls:FindChild("SearchContainer:SearchClearButton"):Show(self.FilterText ~= "")
   self.wndControls:FindChild("KnownOnly"):SetCheck(self.KnownOnly)
@@ -532,6 +570,12 @@ end
 
 function TieDye:OnOrderByRamp( wndHandler, wndControl, eMouseButton )
   self.SortOrder = CodeEnumOrderBy.RAMP
+  self:SortDyes()
+  self:FillDyeList()
+end
+
+function TieDye:OnOrderByCost( wndHandler, wndControl, eMouseButton )
+  self.SortOrder = CodeEnumOrderBy.COST
   self:SortDyes()
   self:FillDyeList()
 end
