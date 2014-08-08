@@ -328,23 +328,38 @@ end
 -----------------------------------------------------------------------------------------------
 -- TieDye Filter Functions
 -----------------------------------------------------------------------------------------------
-function TieDye:MatchHue(nRampIndex, FilterHue)
-  if not TieDyeData.ramps[nRampIndex] then
+function TieDye:MatchHue(tDyeInfo, FilterHue)
+  if not TieDyeData.ramps[tDyeInfo.nRampIndex] then
     return false
   end
 
-  local RampHue = TieDyeData.ramps[nRampIndex].hsv.hue
+  local RampHue = TieDyeData.ramps[tDyeInfo.nRampIndex].hsv.hue
   local Variance = math.abs(FilterHue - RampHue)
   return Variance < 30 or Variance > 329
 end
 
 -- Match hue against the hue of an entered color name
-function TieDye:MatchColorName(nRampIndex)
-  if TieDyeData.colors[self.FilterText] then
-    return self:MatchHue(nRampIndex, TieDyeData.colors[self.FilterText].hsv.hue)
-  else
+function TieDye:MatchColorName(tDyeInfo)
+  local color = TieDyeData.colors[self.FilterText]
+  local ramp = TieDyeData.ramps[tDyeInfo.nRampIndex]
+
+  if not color or not ramp then
     return false
   end
+
+  if (color.hsv.value or 100) < 15 then
+    -- Very dark colors match very dark colors
+    return ramp.hsv.value < 15
+  elseif (color.hsv.saturation or 100) < 25 then
+    -- Very desaturated colors match very desaturated colors at roughly the same white level
+    return ramp.hsv.saturation < 25 and
+      math.abs(color.hsv.value - ramp.hsv.value) < 15
+  elseif ramp.hsv.value >= 15 and ramp.hsv.saturation >= 25 then
+    -- Match remaining colors by hue if they're not too dark or desaturated
+    return self:MatchHue(tDyeInfo, color.hsv.hue)
+  end
+
+  return false
 end
 
 function TieDye:MatchDye(tDyeInfo)
@@ -357,7 +372,7 @@ function TieDye:MatchDye(tDyeInfo)
 
   -- Match hue against the filter hue
   if self.ColorGradientVisible then
-    return self:MatchHue(tDyeInfo.nRampIndex, self.FilterHue)
+    return self:MatchHue(tDyeInfo, self.FilterHue)
   end
 
   if self.FilterText == "" then
@@ -365,7 +380,15 @@ function TieDye:MatchDye(tDyeInfo)
   end
 
   -- Filter by color name
-  if self:MatchColorName(tDyeInfo.nRampIndex) then
+  if self:MatchColorName(tDyeInfo) then
+    return true
+  end
+
+  -- Filter by cost group
+  if "$" == self.FilterText and 1 == tDyeInfo.costGroup or
+     "$$" == self.FilterText and 2 == tDyeInfo.costGroup or
+     "$$$" == self.FilterText and 3 == tDyeInfo.costGroup or
+     "$$$$" == self.FilterText and 4 == tDyeInfo.costGroup then
     return true
   end
 

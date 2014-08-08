@@ -10,17 +10,17 @@ TieDye extends the dye list in the costume window with options to help make find
 Features
 
 * Sort the list of dyes by color number, dye name, or cost
-* Show all dyes or only those you've unlocked (shows all possible colors, these may or may not be available in game)
-* Display dyes in a grid or using a long listing showing the dye gradient and name
-* Search for dyes by name
-* Searching for dyes by entering the name or choosing with a color picker
+* Search for dyes by name, color name, color picker, or cost ($ through $$$$)
+* Show all dyes or only those you've unlocked
+* Grid and list display options
 * Show names for unknown dyes (Thanks to DyePreview - http://www.curse.com/ws-addons/wildstar/222537-dyepreview)
+
 
 Planned Features
 
 * Sort dyes by collection
 * Show where dyes can be found
-* Sort/Filter by quality/price
+
 
 Possible:
 
