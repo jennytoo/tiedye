@@ -7,6 +7,7 @@ L["Locale"] = "deDE"
 L["SORT_ID"] = "Nach ID sortieren"
 L["SORT_NAME"] = "Nach Name sortieren"
 L["SORT_QUALITY"] = "Nach Qualität sortieren"
+L["SORT_COST"] = "Sortieren nach Kosten" -- Google Translate
 L["SHOW_KNOWN_ONLY"] = "Nur bekannte Färbungen zeigen"
 L["GROUP_BY_COLLECTION"] = "Färbungen nach Sammlung gruppieren"
 L["VIEW_GRID"] = "Gitteransicht"

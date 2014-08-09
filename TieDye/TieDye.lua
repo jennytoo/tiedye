@@ -209,6 +209,7 @@ function TieDye:AddHooks()
   self.wndControls:FindChild("ListTypeLong"):SetTooltip(L["VIEW_LIST"])
   self.wndControls:FindChild("OrderName"):SetTooltip(L["SORT_NAME"])
   self.wndControls:FindChild("OrderRamp"):SetTooltip(L["SORT_ID"])
+  self.wndControls:FindChild("OrderCost"):SetTooltip(L["SORT_COST"])
   self.wndControls:FindChild("KnownOnly"):SetTooltip(L["SHOW_KNOWN_ONLY"])
   self.wndControls:FindChild("ColorChooserButton"):SetTooltip(L["SEARCH_COLOR"])
 

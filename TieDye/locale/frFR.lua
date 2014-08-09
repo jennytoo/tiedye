@@ -7,6 +7,7 @@ L["Locale"] = "frFR"
 L["SORT_ID"] = "Classer par ID"
 L["SORT_NAME"] = "Classer par nom"
 L["SORT_QUALITY"] = "Classer par qualité"
+L["SORT_COST"] = "Classer par prix" -- Google Translate
 L["SHOW_KNOWN_ONLY"] = "Voir seulement les teintures débloquées"
 L["GROUP_BY_COLLECTION"] = "Grouper par collection de teintures"
 L["VIEW_GRID"] = "Afficher en mode grille"
